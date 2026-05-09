@@ -353,46 +353,32 @@ Baseline                          → 对比证明"向量筛选 > 随机采样"
 
 ---
 
-## 5. 当前执行方案：两阶段 SFT
+## 5. 当前执行方案：原始数据 SFT
 
-### 5.1 阶段一：原始数据 SFT（先跑这个）
-
-不做任何优化，只用基本清洗（长度过滤 + 去重），跑通 SFT 并拿到改进证据。
+不做清洗，原始医疗数据直接转格式训练。
 
 ```bash
-# Step 1: 下载数据（如已下载跳过）
+# Step 1: 下载数据
 bash scripts/download_data.sh
 
-# Step 2: 基本过滤（--no_vector_recall 跳过向量召回，仅做清洗）
-python scripts_project/02_filter_medical_data.py \
-    --no_vector_recall \
-    --recall_top_k 2000
-
-# Step 3: 构造训练集（1k通用 + 1k医疗，对齐 MedicalGPT 原配置）
-python scripts_project/03_build_sft.py \
-    --general_sft_path MedicalGPT/data/sft/sharegpt_zh_1K_format.jsonl \
+# Step 2: 构造训练集（原始数据直接转 ShareGPT）
+python scripts_project/build_sft_data.py \
+    --general MedicalGPT/data/sft/sharegpt_zh_1K_format.jsonl \
     --general_n 1000 \
-    --medical_n 1000 \
-    --safety_n 0
+    --medical_n 2000
 
-# Step 4: LoRA SFT 训练（使用 MedicalGPT 原版脚本）
-# 修改 MedicalGPT/scripts/run_sft.sh 中的 --train_file_dir 指向 project_data/sft_selected/
+# Step 3: 训练
+# 修改 MedicalGPT/scripts/run_sft.sh 中 --train_file_dir 指向 project_data/sft/
 bash MedicalGPT/scripts/run_sft.sh
-
-# Step 5: 评测（在 CEval 医学子集上检验效果）
-python scripts_project/05_run_eval.py \
-    --model Qwen/Qwen2.5-3B-Instruct \
-    --peft outputs/sft/sft_selected \
-    --name sft_raw
 ```
 
 **本阶段数据集：**
 
 | 数据来源 | 用途 | 数量 | 处理方式 |
 |---|---|---|---|
-| `shibing624/medical` + `Huatuo-26M` | 医疗 QA | 1,000 条 | 仅长度过滤 + 去重 + 格式归一化 |
+| `shibing624/medical` + `Huatuo26M-Lite` | 医疗 QA | 2,000 条 | 直接转格式 |
 | `MedicalGPT/data/sft/sharegpt_zh_1K_format.jsonl` | 通用对话 | 1,000 条 | 直接用 |
-| **总计** | | **2,000 条** | |
+| **总计** | | **3,000 条** | |
 
 **预期结果：**
 
@@ -401,38 +387,7 @@ python scripts_project/05_run_eval.py \
 | baseline（基座模型） | 37.7% | 23.5% | 25.7% | 27.8% |
 | sft_raw（原始数据SFT） | ? | ? | ? | ? |
 
-### 5.2 阶段二：优化数据 SFT（之后做）
-
-参考 HealthAI-2025 思路，用向量召回 + 锚点筛选，选择与目标分布对齐的高质量数据。
-
-```bash
-# Step 1: 开启向量召回，筛选 2000 条高质量医疗数据
-python scripts_project/02_filter_medical_data.py --recall_top_k 2000
-
-# Step 2: 同样构造训练集
-python scripts_project/03_build_sft.py \
-    --general_sft_path MedicalGPT/data/sft/sharegpt_zh_1K_format.jsonl \
-    --general_n 1000 \
-    --medical_n 1000 \
-    --safety_n 0
-
-# Step 3: 训练（使用 MedicalGPT 原版脚本）
-# 注意：修改 --train_file_dir 指向 project_data/sft_selected/
-bash MedicalGPT/scripts/run_sft.sh
-
-# Step 4: 评测
-python scripts_project/05_run_eval.py \
-    --model Qwen/Qwen2.5-3B-Instruct \
-    --peft outputs/sft/sft_selected \
-    --name sft_optimized
-```
-
-**两阶段对比逻辑：**
-
-| 对比 | 唯一变量 | 要证明的结论 |
-|---|---|---|
-| baseline → sft_raw | 有无 SFT | SFT 能注入医学知识 |
-| sft_raw → sft_optimized | 数据筛选策略 | 向量召回筛选的数据优于原始数据 |
+> 后续优化方向：参考 HealthAI-2025 用向量召回筛选高质量数据，再对比证明收益。
 
 ---
 
@@ -462,33 +417,19 @@ python scripts_project/05_run_eval.py \
 ## 7. 代码调用关系
 
 ```
-01_build_anchor.py                   # 定义59条医疗任务锚点
+scripts/download_data.sh             # 下载 shibing624/medical + Huatuo26M-Lite
     ↓
-scripts/download_data.sh             # 下载 shibing624/medical + Huatuo-26M
+build_sft_data.py                    # 原始数据 → ShareGPT 格式
+├── load_jsonl()                     #   加载原始 JSONL
+├── normalize()                      #   格式归一化为 {question, answer}
+├── to_sharegpt()                    #   QA → ShareGPT conversations
+└── save_jsonl()                     #   输出 project_data/sft/
     ↓
-02_filter_medical_data.py            # 核心：过滤 + 向量召回
-├── load_anchors()                   #   加载锚点
-├── load_raw_data()                  #   加载原始 JSONL
-├── normalize_record()               #   格式归一化为 {question, answer}
-├── length_filter()                  #   长度过滤 (q:5-512, a:20-1024)
-├── medical_keyword_filter()         #   医学关键词过滤
-├── deduplicate_by_question()        #   n-gram Jaccard 去重
-├── vector_recall()                  #   BGE 编码 → cosine → top-K
-│   ├── SentenceTransformer.encode   #     BAAI/bge-small-zh-v1.5
-│   ├── anchor_mean pooling          #     目标分布中心
-│   └── cosine_similarity + top-K    #     召回最相似数据
-└── split_train_valid_test()         #   85/10/5 划分
-    ↓
-03_build_sft.py                      # 构造 4 组 SFT 数据集
-├── build_medical_sft_from_filtered()    # 医疗 QA → ShareGPT
-├── build_safety_data()                  # 硬编码 12 条安全拒答
-└── 输出 4 组到 project_data/
-    ↓
-MedicalGPT/scripts/run_sft.sh         # SFT 训练启动 (MedicalGPT 原版)
+MedicalGPT/scripts/run_sft.sh        # SFT 训练 (MedicalGPT 原版)
 └── MedicalGPT/training/supervised_finetuning.py
     ├── LoRA rank=8, alpha=16
     ├── model_max_length=1024
     ├── epochs=2, lr=2e-5
     ├── bf16, gradient_checkpointing
-    └── 输出 checkpoint 到 outputs/sft/
+    └── 输出 checkpoint
 ```
