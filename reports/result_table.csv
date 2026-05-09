@@ -1,5 +1,5 @@
 模型,训练数据,训练方法,basic_medicine (基础医学),clinical_medicine (临床医学),physician (医师资格),综合 accuracy
-Base (Qwen2.5-3B-Instruct),-,-,,,,,
+Base (Qwen2.5-3B-Instruct),-,-,66/175 (37.7%),47/200 (23.5%),114/443 (25.7%),227/818 (27.8%)
 SFT-random,1k general + 2k random medical,LoRA SFT,,,,,
 SFT-selected,1k general + 2k vector-selected medical,LoRA SFT,,,,,
 SFT-safety,selected medical + 500 safety refusals,LoRA SFT,,,,,
