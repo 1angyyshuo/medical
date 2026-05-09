@@ -374,7 +374,8 @@ python scripts_project/03_build_sft.py \
     --medical_n 1000 \
     --safety_n 0
 
-# Step 4: LoRA SFT 训练
+# Step 4: LoRA SFT 训练（已配置 SwanLab 云端监控）
+export SWANLAB_API_KEY="你的API_KEY"
 bash scripts/run_sft.sh sft_selected
 
 # Step 5: 评测（在 CEval 医学子集上检验效果）

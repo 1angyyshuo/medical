@@ -25,6 +25,7 @@ dependencies = [
     "sentencepiece>=0.2.0",
     "numpy>=1.26.0",
     "pandas>=2.0.0",
+    "swanlab>=0.3.0",
 ]
 
 [project.optional-dependencies]

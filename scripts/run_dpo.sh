@@ -38,6 +38,14 @@ echo "SFT base: $SFT_CHECKPOINT"
 echo "Pref data: $PREF_TRAIN"
 echo "Output:   $OUTPUT_DIR"
 
+# ---- SwanLab 配置 ----
+SWANLAB_API_KEY="${SWANLAB_API_KEY:-}"
+SWANLAB_PROJECT="${SWANLAB_PROJECT:-medical-chat}"
+if [ -n "$SWANLAB_API_KEY" ]; then
+    export SWANLAB_API_KEY
+    echo "SwanLab enabled (project: $SWANLAB_PROJECT)"
+fi
+
 # ---- DPO 参数 ----
 BATCH_SIZE="${BATCH_SIZE:-2}"
 GRAD_ACCUM="${GRAD_ACCUM:-8}"
@@ -68,7 +76,8 @@ CMD_ARGS=(
     --target_modules all
     --output_dir "$OUTPUT_DIR"
     --overwrite_output_dir
-    --report_to tensorboard
+    --report_to swanlab
+    --swanlab_project "$SWANLAB_PROJECT"
     --save_strategy epoch
     --evaluation_strategy epoch
     --logging_steps 10
