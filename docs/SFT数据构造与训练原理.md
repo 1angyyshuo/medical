@@ -368,8 +368,36 @@ python scripts_project/build_sft_data.py \
     --medical_n 2000
 
 # Step 3: 训练
-# 修改 MedicalGPT/scripts/run_sft.sh 中 --train_file_dir 指向 project_data/sft/
-bash MedicalGPT/scripts/run_sft.sh
+cd MedicalGPT
+
+CUDA_VISIBLE_DEVICES=0 torchrun --nproc_per_node 1 training/supervised_finetuning.py \
+    --model_name_or_path Qwen/Qwen2.5-3B-Instruct \
+    --train_file_dir ../project_data/sft \
+    --validation_file_dir ../project_data/sft \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --do_train \
+    --do_eval \
+    --use_peft True \
+    --model_max_length 512 \
+    --num_train_epochs 1 \
+    --learning_rate 2e-5 \
+    --logging_steps 10 \
+    --eval_steps 50 \
+    --eval_strategy steps \
+    --save_steps 200 \
+    --save_strategy steps \
+    --save_total_limit 2 \
+    --gradient_accumulation_steps 16 \
+    --output_dir ../outputs/sft \
+    --target_modules all \
+    --lora_rank 8 \
+    --lora_alpha 16 \
+    --lora_dropout 0.05 \
+    --template_name qwen \
+    --report_to swanlab \
+    --bf16 \
+    --gradient_checkpointing True
 ```
 
 **本阶段数据集：**
