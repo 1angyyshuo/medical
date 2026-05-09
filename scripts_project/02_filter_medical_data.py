@@ -286,8 +286,12 @@ def main(
     raw_data_dir = raw_data_dir or RAW_DIR
     output_dir = output_dir or PROCESSED_DIR
 
-    # 1. Load anchors
-    anchors = load_anchors(anchor_path)
+    # 1. Load anchors (only needed for vector recall)
+    if use_vector_recall:
+        anchors = load_anchors(anchor_path)
+    else:
+        anchors = []  # skipped when --no_vector_recall
+        logger.info("Skipping anchor loading (vector recall disabled)")
 
     # 2. Load raw data
     records = load_raw_data(raw_data_dir)
