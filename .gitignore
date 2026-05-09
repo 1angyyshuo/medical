@@ -27,8 +27,6 @@ outputs/
 runs/
 project_data/
 
-# Reference repos (not part of this project)
-MedicalGPT/
 
 # Jupyter
 .ipynb_checkpoints/

@@ -4,11 +4,9 @@
 
 set -e
 
-# 1. 克隆 MedicalGPT（训练依赖）
-if [ ! -d "MedicalGPT" ]; then
-    echo "=== Cloning MedicalGPT ==="
-    git clone https://github.com/shibing624/MedicalGPT.git
-fi
+# 1. 拉取 MedicalGPT submodule
+echo "=== Init MedicalGPT submodule ==="
+git submodule update --init --recursive
 
 # 2. 安装依赖
 echo "=== Installing dependencies ==="

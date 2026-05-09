@@ -1,0 +1,3 @@
+[submodule "MedicalGPT"]
+	path = MedicalGPT
+	url = https://github.com/shibing624/MedicalGPT.git
