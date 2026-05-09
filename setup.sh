@@ -4,21 +4,28 @@
 
 set -e
 
-# 1. 安装依赖
+# 1. 克隆 MedicalGPT（训练依赖）
+if [ ! -d "MedicalGPT" ]; then
+    echo "=== Cloning MedicalGPT ==="
+    git clone https://github.com/shibing624/MedicalGPT.git
+fi
+
+# 2. 安装依赖
 echo "=== Installing dependencies ==="
 pip install -r requirements.txt
-
-# 2. 安装 MedicalGPT 依赖
-if [ -d "MedicalGPT" ]; then
-    pip install -r MedicalGPT/requirements.txt
-fi
+pip install -r MedicalGPT/requirements.txt
 
 echo ""
 echo "=== Setup done ==="
 echo ""
+echo "项目结构:"
+echo "  scripts_project/   数据构造 + 评测脚本"
+echo "  MedicalGPT/        训练代码"
+echo "  docs/              学习文档"
+echo ""
 echo "下一步:"
-echo "  1. bash scripts/download_data.sh      # 下载数据"
+echo "  1. bash scripts/download_data.sh"
 echo "  2. python scripts_project/02_filter_medical_data.py --no_vector_recall --recall_top_k 2000"
 echo "  3. python scripts_project/03_build_sft.py --general_sft_path MedicalGPT/data/sft/sharegpt_zh_1K_format.jsonl --general_n 1000 --medical_n 1000 --safety_n 0"
-echo "  4. 用 MedicalGPT 原版脚本训练: bash MedicalGPT/scripts/run_sft.sh"
-echo "  5. python scripts_project/05_run_eval.py --model Qwen/Qwen2.5-3B-Instruct --peft <checkpoint路径> --name sft_raw"
+echo "  4. 训练: bash MedicalGPT/scripts/run_sft.sh"
+echo "  5. 评测: python scripts_project/05_run_eval.py --model Qwen/Qwen2.5-3B-Instruct --peft <checkpoint> --name sft_raw"

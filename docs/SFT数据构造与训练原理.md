@@ -317,9 +317,10 @@ for i in range(len(conversations)):
 ### 3.4 训练启动
 
 ```bash
-bash scripts/run_sft.sh sft_random       # 对照组
-bash scripts/run_sft.sh sft_selected     # 实验组
-bash scripts/run_sft.sh sft_selected_safety  # 消融组
+# 修改 MedicalGPT/scripts/run_sft.sh 中的 --train_file_dir 指向对应数据目录
+bash MedicalGPT/scripts/run_sft.sh       # 对照组: 数据指向 sft_random
+bash MedicalGPT/scripts/run_sft.sh       # 实验组: 数据指向 sft_selected  
+bash MedicalGPT/scripts/run_sft.sh       # 消融组: 数据指向 sft_selected_safety
 ```
 
 脚本内部会调用 MedicalGPT 的 `training/supervised_finetuning.py`，自动完成：
@@ -483,7 +484,7 @@ scripts/download_data.sh             # 下载 shibing624/medical + Huatuo-26M
 ├── build_safety_data()                  # 硬编码 12 条安全拒答
 └── 输出 4 组到 project_data/
     ↓
-scripts/run_sft.sh                   # SFT 训练启动
+MedicalGPT/scripts/run_sft.sh         # SFT 训练启动 (MedicalGPT 原版)
 └── MedicalGPT/training/supervised_finetuning.py
     ├── LoRA rank=8, alpha=16
     ├── model_max_length=1024
