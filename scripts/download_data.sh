@@ -8,15 +8,13 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DATA_DIR="$PROJECT_ROOT/data/raw"
 mkdir -p "$DATA_DIR"
 
-export HF_DATASETS_TRUST_REMOTE_CODE=1
-
 echo "=== Downloading medical datasets ==="
 
 # 1. shibing624/medical (200w Chinese medical QA pairs, 'finetune' config)
 echo "[1/2] Downloading shibing624/medical..."
 python -c "
 from datasets import load_dataset
-ds = load_dataset('shibing624/medical', 'finetune', trust_remote_code=True, split='train')
+ds = load_dataset('shibing624/medical', 'finetune', split='train')
 # 取前10w条作为样本
 ds.select(range(min(100000, len(ds)))).to_json('$DATA_DIR/shibing624_medical.jsonl', force_ascii=False)
 print(f'Saved {min(100000, len(ds))} records')
