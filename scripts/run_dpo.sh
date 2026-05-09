@@ -82,8 +82,6 @@ CMD_ARGS=(
     --evaluation_strategy epoch
     --logging_steps 10
     --save_total_limit 2
-    --load_best_model_at_end true
-    --metric_for_best_model eval_loss
     --save_safetensors true
     --gradient_checkpointing true
     --bf16
