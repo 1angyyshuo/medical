@@ -1,6 +1,6 @@
-模型,数据,训练方法,CEval-physician,CEval-clinical,CEval-nurse,CMMLU-anatomy,CMMLU-clinical,自建QA(EM),自建QA(F1),安全拒答准确率,PPL
-Base (Qwen2.5-3B-Instruct),-,-,,,,,,,,,
-SFT-random,1k general + 2k random medical,LoRA SFT,,,,,,,,,
-SFT-selected,1k general + 2k selected medical,LoRA SFT,,,,,,,,,
-SFT-safety,selected + 500 safety,LoRA SFT,,,,,,,,,
-DPO-selected,preference pairs,SFT + DPO,,,,,,,,,
+模型,训练数据,训练方法,basic_medicine (基础医学),clinical_medicine (临床医学),physician (医师资格),综合 accuracy
+Base (Qwen2.5-3B-Instruct),-,-,,,,,
+SFT-random,1k general + 2k random medical,LoRA SFT,,,,,
+SFT-selected,1k general + 2k vector-selected medical,LoRA SFT,,,,,
+SFT-safety,selected medical + 500 safety refusals,LoRA SFT,,,,,
+DPO-selected,preference pairs,SFT + DPO,,,,,

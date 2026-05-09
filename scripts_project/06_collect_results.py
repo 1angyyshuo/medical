@@ -1,8 +1,13 @@
 """
-收集和对比所有实验结果，生成评测报告。
+收集和对比所有实验的 CEval 医学子集评测结果。
 
-从 outputs/eval/ 中读取各实验的评测结果，
-生成对比表格和消融分析。
+评估维度:
+- basic_medicine (基础医学) accuracy
+- clinical_medicine (临床医学) accuracy
+- physician (医师资格) accuracy
+- overall (综合) accuracy
+
+生成 Markdown 对比报告 + 消融分析。
 """
 
 import json
@@ -15,149 +20,202 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EVAL_DIR = PROJECT_ROOT / "outputs" / "eval"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 
+MEDICAL_SUBSETS = ["basic_medicine", "clinical_medicine", "physician"]
+
+
+# ---- 实验配置说明 ----
+EXPERIMENT_INFO = {
+    "baseline": {
+        "model": "Qwen2.5-3B-Instruct",
+        "data": "-",
+        "method": "-",
+        "description": "基座模型原始分数",
+    },
+    "sft_random": {
+        "model": "Qwen2.5-3B-Instruct",
+        "data": "1k general + 2k random medical",
+        "method": "LoRA SFT",
+        "description": "随机采样医疗数据 (对照组)",
+    },
+    "sft_selected": {
+        "model": "Qwen2.5-3B-Instruct",
+        "data": "1k general + 2k vector-selected medical",
+        "method": "LoRA SFT",
+        "description": "向量召回筛选医疗数据 (实验组)",
+    },
+    "sft_selected_safety": {
+        "model": "Qwen2.5-3B-Instruct",
+        "data": "selected + 500 safety refusals",
+        "method": "LoRA SFT",
+        "description": "加安全拒答数据 (消融组)",
+    },
+    "dpo_selected": {
+        "model": "Qwen2.5-3B-Instruct",
+        "data": "preference pairs (~50)",
+        "method": "SFT + DPO",
+        "description": "偏好优化后 (DPO)",
+    },
+}
+
 
 def find_latest_eval(experiment_name: str) -> Optional[Path]:
-    """Find the most recent eval result for an experiment."""
+    """Find the most recent evaluation directory for an experiment."""
     exp_dir = EVAL_DIR / experiment_name
     if not exp_dir.exists():
         return None
-
     subdirs = sorted([d for d in exp_dir.iterdir() if d.is_dir()], reverse=True)
     return subdirs[0] if subdirs else None
 
 
-def collect_results(experiment_names: list[str]) -> dict[str, dict]:
-    """Collect results from multiple experiments."""
-    all_results = {}
+def load_summary(experiment_name: str) -> Optional[dict]:
+    """Load the summary.json from the latest eval of an experiment."""
+    latest = find_latest_eval(experiment_name)
+    if not latest:
+        return None
 
-    for name in experiment_names:
-        latest = find_latest_eval(name)
-        if latest:
-            summary_path = latest / "summary.json"
-            if summary_path.exists():
-                with open(summary_path, encoding="utf-8") as f:
-                    all_results[name] = json.load(f)
-            else:
-                print(f"  {name}: no summary.json found")
-                all_results[name] = {"error": "no summary.json"}
-        else:
-            print(f"  {name}: no eval results found (run 05_run_eval.py first)")
-            all_results[name] = {"error": "not evaluated yet"}
-
-    return all_results
+    summary_path = latest / "summary.json"
+    if summary_path.exists():
+        with open(summary_path, encoding="utf-8") as f:
+            return json.load(f)
+    return None
 
 
-def generate_markdown_table(results: dict[str, dict]) -> str:
-    """Generate a markdown comparison table."""
-    experiments = list(results.keys())
+def format_pct(value: Optional[float]) -> str:
+    """Format accuracy as percentage string."""
+    if value is None:
+        return "-"
+    return f"{value * 100:.1f}%"
 
+
+def generate_report(experiments: list[str]) -> str:
+    """Generate a complete Markdown evaluation report."""
     lines = []
-    lines.append("# 医疗大模型评测结果对比")
-    lines.append(f"\n生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    lines.append("# 医疗大模型 CEval 医学子集评测报告")
+    lines.append(f"\n> 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"> 评测数据集: [ceval/ceval-exam](https://huggingface.co/datasets/ceval/ceval-exam)")
+    lines.append(f"> 医学子集: {', '.join(MEDICAL_SUBSETS)}")
+    lines.append("")
 
-    # Header
-    lines.append("| 实验 | 模型 | 数据 | 方法 | CEval-med | CMMLU-med | 自建QA | 安全拒答 | PPL |")
-    lines.append("|---|---|---|---|---|---|---|---|---|")
+    # ---- 1. 主结果表 ----
+    lines.append("## 1. 评测结果总览\n")
+    lines.append("| 实验 | basic_medicine | clinical_medicine | physician | **综合** |")
+    lines.append("|---|---:|---:|---:|---:|")
 
-    for name, result in results.items():
-        if "error" in result:
-            lines.append(f"| {name} | - | - | - | - | - | - | - | - |")
+    all_summaries = {}
+    for exp_name in experiments:
+        summary = load_summary(exp_name)
+        all_summaries[exp_name] = summary
+
+        if summary is None:
+            lines.append(f"| {exp_name} | - | - | - | - |")
             continue
 
-        model = result.get("model", "-")
-        # Extract short model name
-        if "/" in model:
-            model = model.split("/")[-1]
+        subsets = summary.get("subsets", {})
+        overall = summary.get("overall", {})
 
-        ceval_score = "-"
-        cmmlu_score = "-"
-        qa_score = "-"
-        safety_score = "-"
-        ppl_score = "-"
+        bm = format_pct(subsets.get("basic_medicine", {}).get("accuracy"))
+        cm = format_pct(subsets.get("clinical_medicine", {}).get("accuracy"))
+        ph = format_pct(subsets.get("physician", {}).get("accuracy"))
+        ov = format_pct(overall.get("accuracy"))
 
-        # Try to extract lm_eval scores
-        lm_eval = result.get("lm_eval", {})
-        if isinstance(lm_eval, dict) and "results" in lm_eval:
-            for task, metrics in lm_eval["results"].items():
-                acc = metrics.get("acc,none", metrics.get("acc", None))
-                if acc is not None:
-                    if "ceval" in task.lower():
-                        ceval_score = f"{acc:.4f}"
-                    elif "cmmlu" in task.lower():
-                        cmmlu_score = f"{acc:.4f}"
+        lines.append(f"| {exp_name} | {bm} | {cm} | {ph} | **{ov}** |")
 
-        lines.append(
-            f"| {name} | {model} | - | - | {ceval_score} | {cmmlu_score} "
-            f"| {qa_score} | {safety_score} | {ppl_score} |"
-        )
+    lines.append("")
 
-    return "\n".join(lines)
+    # ---- 2. 详细数据表 ----
+    lines.append("## 2. 详细数据 (correct/total)\n")
+    lines.append("| 实验 | basic_medicine | clinical_medicine | physician | 综合 |")
+    lines.append("|---|---|---|---|---|")
 
+    for exp_name in experiments:
+        summary = all_summaries.get(exp_name)
+        if summary is None:
+            lines.append(f"| {exp_name} | - | - | - | - |")
+            continue
 
-def generate_ablation_analysis(results: dict[str, dict]) -> str:
-    """Generate ablation analysis comparing key experimental pairs."""
-    lines = []
-    lines.append("\n## 消融实验分析\n")
+        subsets = summary.get("subsets", {})
+        overall = summary.get("overall", {})
 
-    pairs = [
-        ("sft_random", "sft_selected", "数据筛选策略: 随机 vs 向量召回"),
-        ("sft_selected", "sft_selected_safety", "安全数据: 有无安全拒答数据"),
-        ("sft_selected", "dpo_sft_selected", "偏好优化: SFT vs SFT+DPO"),
+        def fmt_detail(subset_name: str) -> str:
+            s = subsets.get(subset_name, {})
+            return f"{s.get('correct', 0)}/{s.get('total', 0)}"
+
+        bm = fmt_detail("basic_medicine")
+        cm = fmt_detail("clinical_medicine")
+        ph = fmt_detail("physician")
+        ov = f"{overall.get('correct', 0)}/{overall.get('total', 0)}"
+
+        lines.append(f"| {exp_name} | {bm} | {cm} | {ph} | {ov} |")
+
+    lines.append("")
+
+    # ---- 3. 消融实验分析 ----
+    lines.append("## 3. 消融实验分析\n")
+
+    ablation_pairs = [
+        ("baseline", "sft_selected", "SFT 微调有效性: 基座模型 vs SFT 后"),
+        ("sft_random", "sft_selected", "数据筛选策略: 随机采样 vs 向量召回"),
+        ("sft_selected", "sft_selected_safety", "安全数据贡献: 有无安全拒答训练"),
+        ("sft_selected", "dpo_selected", "偏好优化收益: SFT vs SFT+DPO"),
     ]
 
-    for exp_a, exp_b, description in pairs:
-        lines.append(f"### {description}")
-        result_a = results.get(exp_a, {})
-        result_b = results.get(exp_b, {})
+    for exp_a, exp_b, description in ablation_pairs:
+        lines.append(f"### {description}\n")
+        sum_a = all_summaries.get(exp_a)
+        sum_b = all_summaries.get(exp_b)
 
-        if "error" in result_a or "error" in result_b:
-            lines.append("（数据不足，无法对比）\n")
+        if sum_a is None or sum_b is None:
+            lines.append("(数据不足，无法对比)\n")
             continue
 
-        lines.append(f"- **{exp_a}**: baseline")
-        lines.append(f"- **{exp_b}**: improved variant")
-        lines.append("")
-        lines.append("| 指标 | {} | {} | 变化 | 结论 |".format(exp_a, exp_b))
-        lines.append("|---|---|---|---|---|")
+        lines.append("| 指标 | {} | {} | 变化 |".format(exp_a, exp_b))
+        lines.append("|---|---|---|---|")
 
-        # TODO: Extract actual metrics from lm_eval results
-        lines.append("| CEval-med | - | - | - | 待评测 |")
-        lines.append("| PPL | - | - | - | 待评测 |")
-        lines.append("| 安全得分 | - | - | - | 待评测 |")
+        for subset_name in MEDICAL_SUBSETS:
+            acc_a = sum_a.get("subsets", {}).get(subset_name, {}).get("accuracy")
+            acc_b = sum_b.get("subsets", {}).get(subset_name, {}).get("accuracy")
+
+            if acc_a is not None and acc_b is not None:
+                delta = acc_b - acc_a
+                direction = "+" if delta > 0 else ""
+                lines.append(
+                    f"| {subset_name} | {format_pct(acc_a)} | {format_pct(acc_b)} "
+                    f"| {direction}{delta*100:.1f}% |"
+                )
+
+        # Overall
+        ov_a = sum_a.get("overall", {}).get("accuracy")
+        ov_b = sum_b.get("overall", {}).get("accuracy")
+        if ov_a is not None and ov_b is not None:
+            delta = ov_b - ov_a
+            direction = "+" if delta > 0 else ""
+            lines.append(
+                f"| **综合** | **{format_pct(ov_a)}** | **{format_pct(ov_b)}** "
+                f"| **{direction}{delta*100:.1f}%** |"
+            )
+
         lines.append("")
+
+    # ---- 4. 实验配置 ----
+    lines.append("## 4. 实验配置\n")
+    lines.append("| 实验 | 模型 | 训练数据 | 训练方法 | 说明 |")
+    lines.append("|---|---|---|---|---|")
+    for exp_name in experiments:
+        info = EXPERIMENT_INFO.get(exp_name, {})
+        lines.append(
+            f"| {exp_name} | {info.get('model', '-')} | {info.get('data', '-')} "
+            f"| {info.get('method', '-')} | {info.get('description', '-')} |"
+        )
+
+    lines.append("")
+    lines.append("---")
+    lines.append(f"*报告由 `scripts_project/06_collect_results.py` 自动生成*")
 
     return "\n".join(lines)
-
-
-def generate_report(results: dict[str, dict], output_path: Path):
-    """Generate full evaluation report."""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    content = []
-    content.append(generate_markdown_table(results))
-    content.append(generate_ablation_analysis(results))
-
-    # Record experimental configurations
-    content.append("\n## 实验配置\n")
-    content.append("| 实验 | 基础模型 | 通用数据 | 医疗数据 | 偏好数据 | 训练方法 |")
-    content.append("|---|---|---|---|---|---|")
-    content.append("| baseline | Qwen2.5-3B-Instruct | - | - | - | - |")
-    content.append("| sft_random | Qwen2.5-3B-Instruct | 1k general | 2k random | - | LoRA SFT |")
-    content.append("| sft_selected | Qwen2.5-3B-Instruct | 1k general | 2k vector-selected | - | LoRA SFT |")
-    content.append("| sft_selected_safety | Qwen2.5-3B-Instruct | 1k general | 2k selected + 500 safety | - | LoRA SFT |")
-    content.append("| dpo_selected | Qwen2.5-3B-Instruct | - | - | ~50 preference pairs | SFT + DPO |")
-
-    report = "\n".join(content) + "\n"
-
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(report)
-
-    print(report)
-    print(f"\nReport saved to: {output_path}")
 
 
 def main():
-    parser = ArgumentParser(description="Collect and compare evaluation results")
+    parser = ArgumentParser(description="Collect and compare CEval medical evaluation results")
     parser.add_argument(
         "--experiments",
         nargs="+",
@@ -168,18 +226,21 @@ def main():
             "sft_selected_safety",
             "dpo_selected",
         ],
-        help="Experiment names to compare",
+        help="Experiment names to include in the report",
     )
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
 
     output_path = args.output or REPORTS_DIR / "eval_report.md"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print("Collecting evaluation results...")
-    results = collect_results(args.experiments)
+    report = generate_report(args.experiments)
 
-    print("\nGenerating report...")
-    generate_report(results, output_path)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(report)
+
+    print(report)
+    print(f"\nReport saved to: {output_path}")
 
 
 if __name__ == "__main__":
