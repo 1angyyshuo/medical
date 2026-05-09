@@ -352,7 +352,90 @@ Baseline                          → 对比证明"向量筛选 > 随机采样"
 
 ---
 
-## 5. 常见问题
+## 5. 当前执行方案：两阶段 SFT
+
+### 5.1 阶段一：原始数据 SFT（先跑这个）
+
+不做任何优化，只用基本清洗（长度过滤 + 去重），跑通 SFT 并拿到改进证据。
+
+```bash
+# Step 1: 下载数据（如已下载跳过）
+bash scripts/download_data.sh
+
+# Step 2: 基本过滤（--no_vector_recall 跳过向量召回，仅做清洗）
+python scripts_project/02_filter_medical_data.py \
+    --no_vector_recall \
+    --recall_top_k 2000
+
+# Step 3: 构造训练集（1k通用 + 1k医疗，对齐 MedicalGPT 原配置）
+python scripts_project/03_build_sft.py \
+    --general_sft_path MedicalGPT/data/sft/sharegpt_zh_1K_format.jsonl \
+    --general_n 1000 \
+    --medical_n 1000 \
+    --safety_n 0
+
+# Step 4: LoRA SFT 训练
+bash scripts/run_sft.sh sft_selected
+
+# Step 5: 评测（在 CEval 医学子集上检验效果）
+python scripts_project/05_run_eval.py \
+    --model Qwen/Qwen2.5-3B-Instruct \
+    --peft outputs/sft/sft_selected \
+    --name sft_raw
+```
+
+**本阶段数据集：**
+
+| 数据来源 | 用途 | 数量 | 处理方式 |
+|---|---|---|---|
+| `shibing624/medical` + `Huatuo-26M` | 医疗 QA | 1,000 条 | 仅长度过滤 + 去重 + 格式归一化 |
+| `MedicalGPT/data/sft/sharegpt_zh_1K_format.jsonl` | 通用对话 | 1,000 条 | 直接用 |
+| **总计** | | **2,000 条** | |
+
+**预期结果：**
+
+| 实验 | basic_medicine | clinical_medicine | physician | 综合 |
+|---|---|---|---|---|
+| baseline（基座模型） | 37.7% | 23.5% | 25.7% | 27.8% |
+| sft_raw（原始数据SFT） | ? | ? | ? | ? |
+
+### 5.2 阶段二：优化数据 SFT（之后做）
+
+参考 HealthAI-2025 思路，用向量召回 + 锚点筛选，选择与目标分布对齐的高质量数据。
+
+```bash
+# Step 1: 开启向量召回，筛选 2000 条高质量医疗数据
+python scripts_project/02_filter_medical_data.py --recall_top_k 2000
+
+# Step 2: 同样构造训练集
+python scripts_project/03_build_sft.py \
+    --general_sft_path MedicalGPT/data/sft/sharegpt_zh_1K_format.jsonl \
+    --general_n 1000 \
+    --medical_n 1000 \
+    --safety_n 0
+
+# Step 3: 训练
+# 注意：训练前把 sft_selected 输出目录改名，避免覆盖阶段一的结果
+mv outputs/sft/sft_selected outputs/sft/sft_raw
+bash scripts/run_sft.sh sft_selected
+
+# Step 4: 评测
+python scripts_project/05_run_eval.py \
+    --model Qwen/Qwen2.5-3B-Instruct \
+    --peft outputs/sft/sft_selected \
+    --name sft_optimized
+```
+
+**两阶段对比逻辑：**
+
+| 对比 | 唯一变量 | 要证明的结论 |
+|---|---|---|
+| baseline → sft_raw | 有无 SFT | SFT 能注入医学知识 |
+| sft_raw → sft_optimized | 数据筛选策略 | 向量召回筛选的数据优于原始数据 |
+
+---
+
+## 6. 常见问题
 
 ### Q: 为什么用 LoRA 而不是全参微调？
 
@@ -375,7 +458,7 @@ Baseline                          → 对比证明"向量筛选 > 随机采样"
 
 ---
 
-## 6. 代码调用关系
+## 7. 代码调用关系
 
 ```
 01_build_anchor.py                   # 定义59条医疗任务锚点
