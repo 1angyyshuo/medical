@@ -89,6 +89,7 @@ def main():
     parser.add_argument("--general_n", type=int, default=1000)
     parser.add_argument("--medical_n", type=int, default=2000)
     parser.add_argument("--output", type=Path, default=OUTPUT_DIR)
+    parser.add_argument("--valid_size", type=int, default=200, help="验证集大小")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -109,8 +110,14 @@ def main():
     data = general_records + medical_sft
     random.shuffle(data)
 
-    save_jsonl(data, args.output / "train.jsonl")
-    print(f"Total: {len(data)} samples ({len(general_records)} general + {len(medical_sft)} medical)")
+    # 分出验证集
+    valid_n = min(args.valid_size, int(len(data) * 0.1))
+    valid = data[:valid_n]
+    train = data[valid_n:]
+
+    save_jsonl(train, args.output / "train.jsonl")
+    save_jsonl(valid, args.output / "valid.jsonl")
+    print(f"Total: {len(train)} train + {len(valid)} valid ({len(general_records)} general + {len(medical_sft)} medical)")
 
 
 if __name__ == "__main__":
