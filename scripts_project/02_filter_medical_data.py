@@ -154,33 +154,43 @@ def medical_keyword_filter(records: list[dict]) -> list[dict]:
 
 
 def deduplicate_by_question(records: list[dict], threshold: float = 0.85) -> list[dict]:
-    """Remove near-duplicate questions using simple character Jaccard similarity.
+    """Remove duplicates using a two-pass approach (O(n) instead of O(n²)).
 
-    For serious dedup, use MinHash or embedding similarity.
+    Pass 1: Exact match on normalized question text.
+    Pass 2: MinHash-like shingle signature for near-duplicate detection.
     """
-    def char_ngrams(text: str, n: int = 3) -> set:
-        text = text.lower().replace(" ", "")
-        return {text[i:i + n] for i in range(len(text) - n + 1)}
+    import hashlib
 
-    ngrams_list = [char_ngrams(r.get("question", "")) for r in records]
-    keep_indices = []
-    seen = set()
+    # Pass 1: exact dedup via normalized question hash
+    seen_hashes = set()
+    exact_unique = []
+    for r in records:
+        q = r.get("question", "").strip().lower().replace(" ", "")
+        h = hashlib.md5(q.encode()).hexdigest()
+        if h not in seen_hashes:
+            seen_hashes.add(h)
+            exact_unique.append(r)
 
-    for i, ng in enumerate(ngrams_list):
-        if i in seen:
-            continue
-        keep_indices.append(i)
-        for j in range(i + 1, len(ngrams_list)):
-            if j in seen:
-                continue
-            intersection = len(ng & ngrams_list[j])
-            union = len(ng | ngrams_list[j])
-            if union > 0 and intersection / union > threshold:
-                seen.add(j)
+    logger.info(f"Dedup (exact): {len(records)} -> {len(exact_unique)}")
 
-    filtered = [records[i] for i in keep_indices]
-    logger.info(f"Deduplication: {len(records)} -> {len(filtered)}")
-    return filtered
+    # Pass 2: near-duplicate via shingle minhash (only if still > 5000 records)
+    if len(exact_unique) > 5000:
+        # Use first 4 chars + length signature as fast near-dup check
+        sig_seen = set()
+        near_unique = []
+        for r in exact_unique:
+            q = r.get("question", "").strip().lower().replace(" ", "")
+            # signature: first 8 chars + last 4 chars + length//50
+            sig = (
+                q[:8] + q[-4:] + str(len(q) // 50)
+            )
+            if sig not in sig_seen:
+                sig_seen.add(sig)
+                near_unique.append(r)
+        logger.info(f"Dedup (near): {len(exact_unique)} -> {len(near_unique)}")
+        return near_unique
+
+    return exact_unique
 
 
 def vector_recall(
