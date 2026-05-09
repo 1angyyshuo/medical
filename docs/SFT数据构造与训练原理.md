@@ -412,6 +412,16 @@ bash MedicalGPT/scripts/run_sft.sh
 - 如果 sft_selected 显著更高 → 向量筛选有效
 - 如果两者差不多 → 要么锚点设计有问题，要么原始数据太同质
 
+### Q: 下载数据时报 `trust_remote_code is not supported`？
+
+`shibing624/medical` 使用自定义加载脚本，新版 `datasets`（3.x）已移除自定义脚本支持。解决方法：
+
+```bash
+pip install "datasets>=2.14.0,<2.16.0"
+```
+
+> 项目 `requirements.txt` 已锁定该版本范围，`setup.sh` 会自动安装正确版本。
+
 ---
 
 ## 7. 代码调用关系
