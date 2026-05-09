@@ -1,0 +1,60 @@
+[project]
+name = "medchat"
+version = "0.1.0"
+description = "Medical Chat LLM training framework with closed-loop evaluation"
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
+
+dependencies = [
+    "torch>=2.1.0",
+    "transformers>=4.44.0",
+    "trl>=0.12.0",
+    "peft>=0.12.0",
+    "datasets>=2.14.0",
+    "accelerate>=0.30.0",
+    "loguru>=0.7.0",
+    "pyyaml>=6.0",
+    "scikit-learn>=1.3.0",
+    "tensorboard>=2.14.0",
+    "tqdm>=4.66.0",
+    "pydantic>=2.0",
+    "jieba>=0.42.1",
+    "nltk>=3.8.0",
+    "rouge-score>=0.1.2",
+    "sentencepiece>=0.2.0",
+    "numpy>=1.26.0",
+    "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "flash-attn>=2.5.0",
+    "bitsandbytes>=0.43.0",
+    "deepspeed>=0.14.0",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.3.0",
+]
+report = [
+    "matplotlib>=3.8.0",
+    "seaborn>=0.13.0",
+]
+tracking = [
+    "wandb>=0.16.0",
+]
+
+[project.scripts]
+medchat-train = "medchat.cli:train"
+medchat-eval = "medchat.cli:evaluate"
+medchat-pipeline = "medchat.cli:pipeline"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["medchat*"]
