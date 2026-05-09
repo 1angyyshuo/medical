@@ -374,9 +374,9 @@ python scripts_project/03_build_sft.py \
     --medical_n 1000 \
     --safety_n 0
 
-# Step 4: LoRA SFT 训练（已配置 SwanLab 云端监控）
-export SWANLAB_API_KEY="你的API_KEY"
-bash scripts/run_sft.sh sft_selected
+# Step 4: LoRA SFT 训练（使用 MedicalGPT 原版脚本）
+# 修改 MedicalGPT/scripts/run_sft.sh 中的 --train_file_dir 指向 project_data/sft_selected/
+bash MedicalGPT/scripts/run_sft.sh
 
 # Step 5: 评测（在 CEval 医学子集上检验效果）
 python scripts_project/05_run_eval.py \
@@ -415,10 +415,9 @@ python scripts_project/03_build_sft.py \
     --medical_n 1000 \
     --safety_n 0
 
-# Step 3: 训练
-# 注意：训练前把 sft_selected 输出目录改名，避免覆盖阶段一的结果
-mv outputs/sft/sft_selected outputs/sft/sft_raw
-bash scripts/run_sft.sh sft_selected
+# Step 3: 训练（使用 MedicalGPT 原版脚本）
+# 注意：修改 --train_file_dir 指向 project_data/sft_selected/
+bash MedicalGPT/scripts/run_sft.sh
 
 # Step 4: 评测
 python scripts_project/05_run_eval.py \
